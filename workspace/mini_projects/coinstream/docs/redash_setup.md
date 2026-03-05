@@ -9,8 +9,8 @@
    ```bash
    docker compose up -d redash-redis redash-postgres redash
    ```
-3. `docker compose logs -f redash`를 보면 `Starting server` 이후 `Running on` 로그를 확인할 수 있고, Redash Health 체크(`http://localhost:5000/health`)가 통과하면 UI 접속 준비가 끝난 것입니다.
-4. 기본 화면(`http://localhost:5000`)으로 접속하면 최초 관리자 계정을 만들라는 안내가 나오며, 이메일/패스워드를 입력해서 계정을 생성합니다.
+3. `docker compose logs -f redash`를 보면 `Starting server` 이후 `Running on` 로그를 확인할 수 있고, Redash Health 체크(`http://localhost:5050/health`)가 통과하면 UI 접속 준비가 끝난 것입니다.
+4. 기본 화면(`http://localhost:5050`)으로 접속하면 최초 관리자 계정을 만들라는 안내가 나오며, 이메일/패스워드를 입력해서 계정을 생성합니다.
 
 ## 2. ClickHouse 데이터 소스 등록
 

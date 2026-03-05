@@ -76,7 +76,7 @@ All processors share the same consumer group; partitions are distributed automat
   - processor: http://localhost:8002/metrics
 
 ## 6) Redash 실행/접속
-- `docker compose up -d redash-redis redash-postgres redash`으로 Redash+Redis+Postgres를 띄운 뒤 http://localhost:5000 으로 접속하면 최초 로그인 화면 또는 관리자 생성 화면이 나타납니다.
+- `docker compose up -d redash-redis redash-postgres redash`으로 Redash+Redis+Postgres를 띄운 뒤 http://localhost:5050 으로 접속하면 최초 로그인 화면 또는 관리자 생성 화면이 나타납니다.
 - Redash UI에서 `docs/redash_setup.md`에 기록한 순서대로 ClickHouse 데이터 소스를 추가하고 `SELECT 1 AS readiness` 등을 실행해 보세요.
 - 운영 증빙용 쿼리나 대시보드는 `dashboards/redash/queries/` 경로에 저장하고, 필요한 경우 `docs/kpi_definition.md` / `observability/alert_rules.yml`도 함께 갱신합니다.
 

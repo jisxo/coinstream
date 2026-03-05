@@ -5,4 +5,4 @@ cachetools==5.5.0
 clickhouse-connect==0.7.19
 boto3==1.35.10
 pyarrow==17.0.0
-redis==4.9.0
+redis==7.2.1

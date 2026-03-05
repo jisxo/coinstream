@@ -1,6 +1,6 @@
 import signal
 import time
-from typing import Dict
+from typing import Dict, List
 
 import orjson
 from cachetools import TTLCache

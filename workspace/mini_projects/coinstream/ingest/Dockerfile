@@ -1,6 +1,8 @@
 FROM python:3.11-slim
 WORKDIR /app
-COPY requirements.txt .
+COPY ingest/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py .
-CMD ["python", "-u", "app.py"]
+COPY ingest /app/ingest
+COPY shared /app/shared
+ENV PYTHONPATH=/app
+CMD ["python", "-u", "-m", "ingest.app"]

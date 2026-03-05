@@ -1,9 +1,9 @@
-import json
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import orjson
 import redis as redis_lib
 from cachetools import TTLCache
 
@@ -30,7 +30,7 @@ def save_checkpoint(state: Dict[str, Dict[int, OhlcAgg]], dedup: TTLCache, offse
 
 def load_checkpoint(config: ProcessorConfig) -> Optional[Tuple[Dict[str, Dict[int, OhlcAgg]], TTLCache, List[Dict[str, Any]]]]:
     store = config.checkpoint_store.lower()
-    payload = None
+    payload: Optional[Dict[str, Any]] = None
     if store == "redis":
         payload = _load_from_redis(config)
     elif store == "clickhouse":
@@ -75,7 +75,7 @@ def _deserialize_dedup(entries: List[List[Any]], config: ProcessorConfig) -> TTL
 
 def _save_to_redis(payload: Dict[str, Any], config: ProcessorConfig) -> None:
     client = redis_lib.from_url(config.checkpoint_redis_url)
-    client.set(config.checkpoint_redis_key, json.dumps(payload))
+    client.set(config.checkpoint_redis_key, orjson.dumps(payload))
 
 
 def _load_from_redis(config: ProcessorConfig) -> Optional[Dict[str, Any]]:
@@ -83,19 +83,22 @@ def _load_from_redis(config: ProcessorConfig) -> Optional[Dict[str, Any]]:
     raw = client.get(config.checkpoint_redis_key)
     if raw is None:
         return None
-    return json.loads(raw)
+    return orjson.loads(raw)
 
 
 def _save_to_file(payload: Dict[str, Any], path: str) -> None:
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(json.dumps(payload))
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_bytes(orjson.dumps(payload))
+    tmp.replace(target)
 
 
 def _load_from_file(path: str) -> Optional[Dict[str, Any]]:
     file_path = Path(path)
     if not file_path.exists():
         return None
-    return json.loads(file_path.read_text())
+    return orjson.loads(file_path.read_bytes())
 
 
 def _save_to_clickhouse(payload: Dict[str, Any], config: ProcessorConfig) -> None:
@@ -106,11 +109,32 @@ def _save_to_clickhouse(payload: Dict[str, Any], config: ProcessorConfig) -> Non
         password=config.clickhouse_password,
         database=config.clickhouse_database,
     )
-    # Placeholder: store JSON payload in a lightweight table
     client.command(
-        "CREATE TABLE IF NOT EXISTS checkpoints (payload String, created_at DateTime64(3, 'UTC')) ENGINE = Log"
+        """
+        CREATE TABLE IF NOT EXISTS processor_checkpoints (
+            id UUID DEFAULT generateUUIDv4(),
+            state String,
+            dedup String,
+            offsets String,
+            created_at DateTime64(3, 'UTC')
+        ) ENGINE = MergeTree()
+        ORDER BY created_at
+        """
     )
-    client.insert("checkpoints", [{"payload": json.dumps(payload), "created_at": datetime.utcnow()}])
+    state_blob = orjson.dumps(payload["state"]).decode()
+    dedup_blob = orjson.dumps(payload["dedup"]).decode()
+    offsets_blob = orjson.dumps(payload["offsets"]).decode()
+    client.insert(
+        "processor_checkpoints",
+        [
+            {
+                "state": state_blob,
+                "dedup": dedup_blob,
+                "offsets": offsets_blob,
+                "created_at": datetime.utcnow(),
+            }
+        ],
+    )
 
 
 def _load_from_clickhouse(config: ProcessorConfig) -> Optional[Dict[str, Any]]:
@@ -121,7 +145,14 @@ def _load_from_clickhouse(config: ProcessorConfig) -> Optional[Dict[str, Any]]:
         password=config.clickhouse_password,
         database=config.clickhouse_database,
     )
-    rows = client.query("SELECT payload FROM checkpoints ORDER BY created_at DESC LIMIT 1").result
+    rows = client.query(
+        "SELECT state, dedup, offsets FROM processor_checkpoints ORDER BY created_at DESC LIMIT 1"
+    ).result
     if not rows:
         return None
-    return json.loads(rows[0][0])
+    state_blob, dedup_blob, offsets_blob = rows[0]
+    return {
+        "state": orjson.loads(state_blob),
+        "dedup": orjson.loads(dedup_blob),
+        "offsets": orjson.loads(offsets_blob),
+    }

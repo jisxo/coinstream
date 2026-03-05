@@ -24,6 +24,45 @@ class OhlcAgg:
     trade_count: int = 0
     vwap_numer: float = 0.0
 
+    def to_snapshot(self) -> dict:
+        return {
+            "window_start_ms": self.window_start_ms,
+            "window_end_ms": self.window_end_ms,
+            "symbol": self.symbol,
+            "open_price": self.open_price,
+            "high": None if self.high == -math.inf else self.high,
+            "low": None if self.low == math.inf else self.low,
+            "close_price": self.close_price,
+            "open_event_time_ms": self.open_event_time_ms,
+            "close_event_time_ms": self.close_event_time_ms,
+            "open_trade_id": self.open_trade_id,
+            "close_trade_id": self.close_trade_id,
+            "volume": self.volume,
+            "trade_count": self.trade_count,
+            "vwap_numer": self.vwap_numer,
+        }
+
+    @classmethod
+    def from_snapshot(cls, snapshot: dict) -> "OhlcAgg":
+        high = snapshot.get("high")
+        low = snapshot.get("low")
+        return cls(
+            window_start_ms=snapshot["window_start_ms"],
+            window_end_ms=snapshot["window_end_ms"],
+            symbol=snapshot["symbol"],
+            open_price=snapshot.get("open_price"),
+            high=high if high is not None else -math.inf,
+            low=low if low is not None else math.inf,
+            close_price=snapshot.get("close_price"),
+            open_event_time_ms=snapshot.get("open_event_time_ms"),
+            close_event_time_ms=snapshot.get("close_event_time_ms"),
+            open_trade_id=snapshot.get("open_trade_id"),
+            close_trade_id=snapshot.get("close_trade_id"),
+            volume=snapshot.get("volume", 0.0),
+            trade_count=snapshot.get("trade_count", 0),
+            vwap_numer=snapshot.get("vwap_numer", 0.0),
+        )
+
     def update(self, event_time_ms: int, agg_trade_id: int, price: float, qty: float) -> None:
         if self.open_event_time_ms is None or event_time_ms < self.open_event_time_ms or (
             event_time_ms == self.open_event_time_ms and (self.open_trade_id is None or agg_trade_id < self.open_trade_id)

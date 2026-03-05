@@ -170,7 +170,7 @@ services:
       retries: 5
 
   redash:
-    image: redash/redash:12.0.0.b50960
+    image: redash/redash:12.0.0
     command: server
     ports:
       - "5000:5000"

@@ -4,7 +4,7 @@ from typing import Dict
 
 import orjson
 from cachetools import TTLCache
-from confluent_kafka import Consumer
+from confluent_kafka import Consumer, TopicPartition
 from prometheus_client import start_http_server
 
 import pyarrow as pa
@@ -12,6 +12,7 @@ import pyarrow.parquet as pq
 
 from processor.config import ProcessorConfig
 from processor.metrics import ProcessorMetrics
+from processor.checkpoint import load_checkpoint, save_checkpoint
 from processor.sink import build_clickhouse_client, build_s3_client
 from processor.window import OhlcAgg, window_bounds
 
@@ -26,6 +27,17 @@ class GracefulExit:
 
 def normalize_message(value: bytes) -> Dict[str, object]:
     return orjson.loads(value)
+
+
+def _capture_offsets(consumer: Consumer) -> List[Dict[str, int]]:
+    partitions = consumer.assignment()
+    if not partitions:
+        return []
+    positions = consumer.position(partitions)
+    return [
+        {"topic": tp.topic, "partition": tp.partition, "offset": pos.offset}
+        for tp, pos in zip(partitions, positions)
+    ]
 
 
 def flush_windows(
@@ -123,16 +135,35 @@ def main() -> None:
         }
     )
     consumer.subscribe([config.kafka.topic_trades])
+    consumer.poll(0)
 
     dedup = TTLCache(maxsize=config.dedup_maxsize, ttl=config.dedup_ttl_seconds)
     state: dict[str, dict[int, OhlcAgg]] = {}
     max_event_time_ms = 0
     last_flush = time.time()
+    saved_offsets = None
+    checkpoint_data = load_checkpoint(config)
+    if checkpoint_data:
+        state, dedup, saved_offsets = checkpoint_data
+        if state:
+            max_event_time_ms = max(
+                (agg.window_end_ms for windows in state.values() for agg in windows.values()),
+                default=0,
+            )
+        metrics.checkpoint_restores.inc()
+    assignment = consumer.assignment()
+    if saved_offsets and assignment:
+        offsets_map = { (entry["topic"], entry["partition"]): entry["offset"] for entry in saved_offsets }
+        for tp in assignment:
+            key = (tp.topic, tp.partition)
+            if key in offsets_map:
+                consumer.seek(TopicPartition(tp.topic, tp.partition, offsets_map[key]))
 
     exit_ctl = GracefulExit()
     signal.signal(signal.SIGINT, exit_ctl.handler)
     signal.signal(signal.SIGTERM, exit_ctl.handler)
 
+    last_checkpoint = time.time()
     while not exit_ctl.stop:
         msg = consumer.poll(1.0)
         if msg is None:
@@ -171,15 +202,27 @@ def main() -> None:
             except Exception:
                 metrics.parse_failed.inc()
 
+        # calculate watermark
         watermark_ms = max_event_time_ms - config.allowed_lateness_ms if max_event_time_ms else 0
         metrics.watermark.set(watermark_ms)
 
+        # flush
         if time.time() - last_flush >= 1.0:
             t0 = time.perf_counter()
             flushed = flush_windows(state, watermark_ms, ch_client, s3_client, config, metrics)
             if flushed:
                 metrics.emission_latency.observe(time.perf_counter() - t0)
             last_flush = time.time()
+
+        # checkpoint
+        if time.time() - last_checkpoint >= config.checkpoint_interval_ms / 1000:
+            checkpoint_offsets = _capture_offsets(consumer)
+            checkpoint_start = time.perf_counter()
+            save_checkpoint(state, dedup, checkpoint_offsets, config)
+            metrics.checkpoint_snapshots.inc()
+            metrics.checkpoint_duration.observe(time.perf_counter() - checkpoint_start)
+            last_checkpoint = time.time()
+
 
     consumer.close()
 

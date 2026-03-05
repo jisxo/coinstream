@@ -24,6 +24,11 @@ class ProcessorConfig:
     metrics_port: int
     consumer_group: str
     auto_offset_reset: str
+    checkpoint_interval_ms: int
+    checkpoint_store: str
+    checkpoint_redis_url: str
+    checkpoint_redis_key: str
+    checkpoint_file_path: str
 
     @classmethod
     def from_env(cls) -> "ProcessorConfig":
@@ -46,4 +51,9 @@ class ProcessorConfig:
             metrics_port=int(os.getenv("PROCESSOR_METRICS_PORT", "8000")),
             consumer_group=os.getenv("CONSUMER_GROUP", "ohlc_processor_v1"),
             auto_offset_reset=os.getenv("AUTO_OFFSET_RESET", "latest"),
+            checkpoint_interval_ms=int(os.getenv("CHECKPOINT_INTERVAL_MS", "15000")),
+            checkpoint_store=os.getenv("CHECKPOINT_STORE", "redis"),
+            checkpoint_redis_url=os.getenv("CHECKPOINT_REDIS_URL", "redis://redis:6379/0"),
+            checkpoint_redis_key=os.getenv("CHECKPOINT_REDIS_KEY", "coinstream:checkpoint"),
+            checkpoint_file_path=os.getenv("CHECKPOINT_FILE_PATH", "/tmp/coinstream_checkpoint.json"),
         )

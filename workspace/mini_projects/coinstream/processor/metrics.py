@@ -12,3 +12,6 @@ class ProcessorMetrics:
         self.max_event_time = Gauge("max_event_time_ms", "Max event time seen (ms)")
         self.watermark = Gauge("watermark_ms", "Current watermark (ms)")
         self.symbol_volatility = Gauge("symbol_volatility_ratio", "1-minute high/low ratio per symbol", ["symbol"])
+        self.checkpoint_snapshots = Counter("checkpoint_snapshots_total", "Checkpoint snapshots created")
+        self.checkpoint_restores = Counter("checkpoint_restores_total", "Checkpoint restores applied")
+        self.checkpoint_duration = Histogram("checkpoint_duration_seconds", "Time spent persisting a checkpoint")

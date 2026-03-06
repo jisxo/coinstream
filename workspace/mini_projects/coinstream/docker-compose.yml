@@ -180,6 +180,8 @@ services:
       REDASH_COOKIE_SECRET: ${REDASH_COOKIE_SECRET:-replace-with-secure-cookie}
       REDASH_SECRET_KEY: ${REDASH_SECRET_KEY:-replace-with-secure-secret}
       REDASH_LOG_LEVEL: ${REDASH_LOG_LEVEL:-INFO}
+      REDASH_GUNICORN_TIMEOUT: ${REDASH_GUNICORN_TIMEOUT:-120}
+      REDASH_WEB_WORKER_TIMEOUT: 120
     depends_on:
       redash-redis:
         condition: service_healthy

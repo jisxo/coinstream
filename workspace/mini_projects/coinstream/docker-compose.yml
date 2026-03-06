@@ -187,11 +187,24 @@ services:
         condition: service_healthy
       redash-postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      healthcheck:
+        test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+        interval: 30s
+        timeout: 10s
+        retries: 5
+
+  redash-worker:
+    image: redash/redash:26.3.0
+    command: worker
+    environment:
+      REDASH_DATABASE_URL: ${REDASH_DATABASE_URL:-postgresql://${REDASH_DB_USER:-redash}:${REDASH_DB_PASSWORD:-redash}@redash-postgres:5432/${REDASH_DB_NAME:-redash}}
+      REDASH_REDIS_URL: ${REDASH_REDIS_URL:-redis://redash-redis:6379/0}
+      REDASH_COOKIE_SECRET: ${REDASH_COOKIE_SECRET:-replace-with-secure-cookie}
+      REDASH_SECRET_KEY: ${REDASH_SECRET_KEY:-replace-with-secure-secret}
+      REDASH_LOG_LEVEL: ${REDASH_LOG_LEVEL:-INFO}
+    depends_on:
+      - redash-redis
+      - redash-postgres
 
 volumes:
   clickhouse_data:

@@ -7,7 +7,7 @@
 1. `.env`에서 `REDASH_*` 값을 검토하고 필요하면 강력한 `COOKIE_SECRET`/`SECRET_KEY` 및 Postgres 비밀번호를 채웁니다.
 2. 다음 명령으로 Redash + 의존 서비스를 백그라운드로 올립니다:
    ```bash
-   docker compose up -d redash-redis redash-postgres redash
+   docker compose up -d redash-redis redash-postgres redash redash-worker
    ```
 3. `docker compose logs -f redash`를 보면 `Starting server` 이후 `Running on` 로그를 확인할 수 있고, Redash Health 체크(`http://localhost:5050/health`)가 통과하면 UI 접속 준비가 끝난 것입니다.
 4. 기본 화면(`http://localhost:5050`)으로 접속하면 최초 관리자 계정을 만들라는 안내가 나오며, 이메일/패스워드를 입력해서 계정을 생성합니다.
@@ -41,5 +41,6 @@ SELECT 1 AS readiness;
 ## 4. 운영 증빙
 
 - `docs/kpi_definition.md`에 `symbol_volatility_ratio` 등 실제 지표 정의를 기록하세요.
+- Redash 테스트나 Alert/Query 처리를 위해 `redash-worker`를 항상 띄워두세요 (`docker compose up -d redash-worker`).
 - `dashboards/redash/queries/`에 ClickHouse 기반 쿼리를 저장해 두면 나중에 Redash 대시보드를 복원하거나 사례로 공유하기 좋습니다.
 - 알림 기준을 `observability/alert_rules.yml`에 정리하고, Runbook·Incidents 문서도 함께 업데이트하면 JD 증빙 흐름이 완전히 갖춰집니다.

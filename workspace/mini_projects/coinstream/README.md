@@ -50,7 +50,7 @@ LIMIT 20"
 - Prefix: `ohlc_1m/`
 
 ## 2) Key config knobs (important for “high-volume” claims)
-Edit `.env` (copy from `.env.example`):
+Copy `.env.example` to `.env` and fill secrets, then edit it:
 - `SYMBOLS`: increase number of symbols to increase event rate
 - `WINDOW_MS`: 60000 for 1m OHLCV
 - `ALLOWED_LATENESS_MS`: watermark lateness tolerance
@@ -77,6 +77,7 @@ All processors share the same consumer group; partitions are distributed automat
 
 ## 6) Redash 실행/접속
 - `docker compose up -d redash-redis redash-postgres redash`으로 Redash+Redis+Postgres를 띄운 뒤 http://localhost:5050 으로 접속하면 최초 로그인 화면 또는 관리자 생성 화면이 나타납니다.
+- Worker가 읽기 테스트를 처리할 수 있도록 `redash-worker`를 함께 띄우려면 `docker compose up -d redash-worker`도 추가로 실행하세요.
 - Redash UI에서 `docs/redash_setup.md`에 기록한 순서대로 ClickHouse 데이터 소스를 추가하고 `SELECT 1 AS readiness` 등을 실행해 보세요.
 - 운영 증빙용 쿼리나 대시보드는 `dashboards/redash/queries/` 경로에 저장하고, 필요한 경우 `docs/kpi_definition.md` / `observability/alert_rules.yml`도 함께 갱신합니다.
 

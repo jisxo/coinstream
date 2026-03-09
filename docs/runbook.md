@@ -31,6 +31,12 @@
 3) watermark/allowed lateness 설정이 적절한지 검토
 - 조치: batch flush 주기/size 조정, watermark, Kafka fetch tuning
 
+## MinIO NoSuchBucket
+1) processor env의 `S3_ENDPOINT`, `S3_BUCKET`, 키 값이 올바른지 확인
+2) `processor` 재배포 후 동일 에러가 반복되는지 확인
+3) `processor` startup bucket bootstrap(`ensure_s3_bucket`) 로그/동작 확인
+4) 필요 시 `docs/minio_bootstrap.md`의 Shell 검증 커맨드로 bucket/object 상태 확인
+
 ## Incident drill
 1) alert name/measurements를 `docs/incidents/incident_template.md`에 기록
 2) 로그/metrics 스냅샷(`docker compose logs`, Prometheus query) 첨부

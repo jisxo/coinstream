@@ -75,6 +75,22 @@ All processors share the same consumer group; partitions are distributed automat
   - ingest: http://localhost:8001/metrics
   - processor: http://localhost:8002/metrics
 
+### Render에서 Prometheus/Grafana 추가
+- Prometheus 서비스
+  - Runtime: Dockerfile
+  - Root Directory: 비움
+  - Dockerfile Path: `prometheus/Dockerfile`
+  - 내부 포트: `9090`
+  - 스크랩 타겟 설정 파일: `prometheus/prometheus.render.yml`
+- Grafana 서비스
+  - Runtime: Dockerfile
+  - Root Directory: 비움
+  - Dockerfile Path: `grafana/Dockerfile`
+  - 내부 포트: `3000`
+  - env: `PROMETHEUS_URL=http://coinstream-prometheus:9090`
+  - env: `GF_SECURITY_ADMIN_USER`, `GF_SECURITY_ADMIN_PASSWORD`
+- Grafana는 `grafana/dashboards/coinstream-overview.json`를 자동 로드합니다.
+
 ## 6) Redash 실행/접속
 - `docker compose up -d redash-redis redash-postgres redash`으로 Redash+Redis+Postgres를 띄운 뒤 http://localhost:5050 으로 접속하면 최초 로그인 화면 또는 관리자 생성 화면이 나타납니다.
 - Worker가 읽기 테스트를 처리할 수 있도록 `redash-worker`를 함께 띄우려면 `docker compose up -d redash-worker`도 추가로 실행하세요.
@@ -84,6 +100,7 @@ All processors share the same consumer group; partitions are distributed automat
 ## 7) Notes / limitations
 - This is a runnable demo. For strict end-to-end exactly-once, you'd typically use Flink checkpointing + transactional sinks.
 - Binance WebSocket is public market data; no API key is required for these streams.
+- MinIO bucket(`S3_BUCKET`)은 processor가 시작 시 자동 bootstrap 합니다.
 
 ## 8) Verification checkpoints
 - ClickHouse mart tables
@@ -113,7 +130,11 @@ All processors share the same consumer group; partitions are distributed automat
 - `docs/architecture.md`: ClickHouse mart 테이블, idempotent 전략, dedup/checkpoint/MinIO 흐름 설명을 담고 있습니다.
 - `docs/operational_todo.md`: 운영 루프 완성과 관찰 포인트를 위한 항목별 진행 상태와 다음 조치 체크리스트입니다.
 - `docs/runbook.md` + `docs/incidents/incident_template.md`: alert별 체크리스트/조치·incidents 기록 포맷입니다.
+- `docs/minio_bootstrap.md`: MinIO bucket 자동 bootstrap 동작과 Render 점검 절차입니다.
+- `docs/observability_render.md`: Render에 Prometheus/Grafana를 붙이는 단계별 설정 가이드입니다.
 - `docs/redash_setup.md` + `docs/dashboards/redash/queries/`: Redash 연결/데이터소스 등록과 Saved Query 템플릿입니다.
 - `docs/observability/alert_rules.yml`, `prometheus/prometheus.yml`: Prometheus scraping/alert 룰과 Alertmanager 연계 기준을 정의했습니다.
+- `prometheus/Dockerfile`, `prometheus/prometheus.render.yml`: Render용 Prometheus 이미지/스크랩 설정입니다.
+- `grafana/Dockerfile`, `grafana/provisioning/*`, `grafana/dashboards/*`: Render용 Grafana 자동 프로비저닝 구성입니다.
 - `docs/benchmarks.md` + `docs/scripts/load_test.md`: 벤치마크/로드 테스트 템플릿과 실행 절차를 기록합니다.
 - `docs/benchmarks.md` 및 `docs/scripts/load_test.md`에 따라 결과를 수기 작성하거나 스크립트에 추가해도 됩니다.

@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 from processor.config import ProcessorConfig
 from processor.metrics import ProcessorMetrics
 from processor.checkpoint import load_checkpoint, save_checkpoint
-from processor.sink import build_clickhouse_client, build_s3_client
+from processor.sink import build_clickhouse_client, build_s3_client, ensure_s3_bucket
 from processor.mart import ensure_clickhouse_schema, write_mart_ohlcv, write_mart_pipeline_health
 from processor.window import OhlcAgg, window_bounds
 
@@ -132,6 +132,7 @@ def main() -> None:
         access_key=config.s3_access_key,
         secret_key=config.s3_secret_key,
     )
+    ensure_s3_bucket(s3_client, config.s3_bucket)
 
     consumer = Consumer(
         {

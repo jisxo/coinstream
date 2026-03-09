@@ -18,6 +18,9 @@ from processor.sink import build_clickhouse_client, build_s3_client, ensure_s3_b
 from processor.mart import ensure_clickhouse_schema, write_mart_ohlcv, write_mart_pipeline_health
 from processor.window import OhlcAgg, window_bounds
 
+BOOTSTRAP_RETRIES = 30
+BOOTSTRAP_RETRY_DELAY_SECONDS = 2.0
+
 
 class GracefulExit:
     def __init__(self) -> None:
@@ -29,6 +32,29 @@ class GracefulExit:
 
 def normalize_message(value: bytes) -> Dict[str, object]:
     return orjson.loads(value)
+
+
+def _connect_clickhouse_with_retry(config: ProcessorConfig):
+    last_exc = None
+    for attempt in range(1, BOOTSTRAP_RETRIES + 1):
+        try:
+            ch_client = build_clickhouse_client(
+                host=config.clickhouse_host,
+                port=config.clickhouse_port,
+                username=config.clickhouse_user,
+                password=config.clickhouse_password,
+                database=config.clickhouse_database,
+            )
+            ensure_clickhouse_schema(ch_client)
+            return ch_client
+        except Exception as exc:  # startup retry
+            last_exc = exc
+            print(
+                f"[bootstrap] clickhouse connect failed ({attempt}/{BOOTSTRAP_RETRIES}): {exc}",
+                flush=True,
+            )
+            time.sleep(BOOTSTRAP_RETRY_DELAY_SECONDS)
+    raise RuntimeError("clickhouse bootstrap failed") from last_exc
 
 
 def _capture_offsets(consumer: Consumer) -> List[Dict[str, int]]:
@@ -119,14 +145,7 @@ def main() -> None:
     metrics = ProcessorMetrics()
     start_http_server(config.metrics_port)
 
-    ch_client = build_clickhouse_client(
-        host=config.clickhouse_host,
-        port=config.clickhouse_port,
-        username=config.clickhouse_user,
-        password=config.clickhouse_password,
-        database=config.clickhouse_database,
-    )
-    ensure_clickhouse_schema(ch_client)
+    ch_client = _connect_clickhouse_with_retry(config)
     s3_client = build_s3_client(
         endpoint_url=config.s3_endpoint,
         access_key=config.s3_access_key,

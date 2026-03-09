@@ -4,6 +4,76 @@ from typing import Iterable
 from processor.window import OhlcAgg
 
 
+def ensure_clickhouse_schema(ch_client) -> None:
+    # Create databases/tables at processor startup so ClickHouse init scripts
+    # are not required for deployment environments with restricted init hooks.
+    ch_client.command("CREATE DATABASE IF NOT EXISTS crypto")
+    ch_client.command("CREATE DATABASE IF NOT EXISTS coinstream")
+    ch_client.command(
+        """
+        CREATE TABLE IF NOT EXISTS crypto.ohlc_1m
+        (
+            window_start DateTime64(3, 'UTC'),
+            window_end   DateTime64(3, 'UTC'),
+            symbol       LowCardinality(String),
+            open         Float64,
+            high         Float64,
+            low          Float64,
+            close        Float64,
+            volume       Float64,
+            trade_count  UInt64,
+            vwap         Float64,
+            emitted_at   DateTime64(3, 'UTC')
+        )
+        ENGINE = ReplacingMergeTree(emitted_at)
+        PARTITION BY toDate(window_start)
+        ORDER BY (symbol, window_start)
+        """
+    )
+    ch_client.command(
+        """
+        CREATE TABLE IF NOT EXISTS coinstream.mart_ohlcv_1m
+        (
+            window_start DateTime64(3, 'UTC'),
+            window_end DateTime64(3, 'UTC'),
+            symbol String,
+            open Float64,
+            high Float64,
+            low Float64,
+            close Float64,
+            volume Float64,
+            trade_count UInt64,
+            vwap Float64,
+            late_event_count UInt64 DEFAULT 0,
+            window_ms UInt32,
+            emitted_at DateTime64(3, 'UTC'),
+            result_version UInt64,
+            created_at DateTime64(3, 'UTC')
+        )
+        ENGINE = ReplacingMergeTree(result_version)
+        PARTITION BY toDate(window_start)
+        ORDER BY (symbol, window_start)
+        """
+    )
+    ch_client.command(
+        """
+        CREATE TABLE IF NOT EXISTS coinstream.mart_pipeline_health_1m
+        (
+            window_start DateTime64(3, 'UTC'),
+            throughput UInt64,
+            p95_latency_ms Float64,
+            consumer_lag_ms UInt64,
+            freshness_seconds Float64,
+            late_event_count UInt64,
+            created_at DateTime64(3, 'UTC')
+        )
+        ENGINE = MergeTree()
+        PARTITION BY toDate(window_start)
+        ORDER BY window_start
+        """
+    )
+
+
 def write_mart_ohlcv(ch_client, rows: Iterable[dict]) -> None:
     column_names = [
         "window_start",

@@ -15,7 +15,7 @@ from processor.config import ProcessorConfig
 from processor.metrics import ProcessorMetrics
 from processor.checkpoint import load_checkpoint, save_checkpoint
 from processor.sink import build_clickhouse_client, build_s3_client
-from processor.mart import write_mart_ohlcv, write_mart_pipeline_health
+from processor.mart import ensure_clickhouse_schema, write_mart_ohlcv, write_mart_pipeline_health
 from processor.window import OhlcAgg, window_bounds
 
 
@@ -126,6 +126,7 @@ def main() -> None:
         password=config.clickhouse_password,
         database=config.clickhouse_database,
     )
+    ensure_clickhouse_schema(ch_client)
     s3_client = build_s3_client(
         endpoint_url=config.s3_endpoint,
         access_key=config.s3_access_key,

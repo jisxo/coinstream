@@ -1,0 +1,36 @@
+{
+  "name": "CoinStream Operations",
+  "description": "OHLCV / volatility / freshness overview",
+  "widgets": [
+    {
+      "name": "Volatility Top 1h",
+      "type": "visualization",
+      "query_id": 1,
+      "position": {"col": 0, "row": 0, "size_x": 4, "size_y": 3}
+    },
+    {
+      "name": "Volatility Time Series",
+      "type": "visualization",
+      "query_id": 2,
+      "position": {"col": 4, "row": 0, "size_x": 4, "size_y": 3}
+    },
+    {
+      "name": "Symbol OHLCV",
+      "type": "visualization",
+      "query_id": 3,
+      "position": {"col": 0, "row": 3, "size_x": 4, "size_y": 3}
+    },
+    {
+      "name": "Freshness",
+      "type": "visualization",
+      "query_id": 4,
+      "position": {"col": 4, "row": 3, "size_x": 4, "size_y": 3}
+    },
+    {
+      "name": "Missing Symbols",
+      "type": "visualization",
+      "query_id": 5,
+      "position": {"col": 8, "row": 0, "size_x": 4, "size_y": 3}
+    }
+  ]
+}

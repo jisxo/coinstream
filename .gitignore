@@ -1,2 +1,13 @@
+<<<<<<< HEAD
 workspace/mini_projects/coinstream/coinstream_project_spec_interview.txt
 workspace/mini_projects/coinstream/concept_summary.txt
+=======
+workspace/mini_projects/coinstream/coinstream_project_spec_interview.txt
+workspace/mini_projects/coinstream/concept_summary.txt
+coinstream_project_spec_interview.txt
+concept_summary.txt
+.env
+.DS_Store
+__pycache__/
+.vscode/
+>>>>>>> 3ba658e (Initial coinstream workspace)

@@ -1,0 +1,224 @@
+services:
+  redpanda:
+    image: redpandadata/redpanda:v25.3.9-fips
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:9092
+      - --pandaproxy-addr
+      - 0.0.0.0:8082
+      - --advertise-pandaproxy-addr
+      - redpanda:8082
+    ports:
+      - "9092:9092"
+      - "8082:8082"
+      - "9644:9644"   # metrics
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --watch --exit-when-healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  console:
+    image: redpandadata/console:v2.6.1
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_SCHEMAREGISTRY_ENABLED: "false"
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.6
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/users.d/default-user.xml:/etc/clickhouse-server/users.d/default-user.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports:
+      - "9001:9001"
+      - "9002:9000"   # host:container (avoid clashing with clickhouse native 9000 on host)
+    volumes:
+      - minio_data:/data
+
+  createbuckets:
+    image: minio/mc:RELEASE.2025-01-17T23-25-50Z
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio ${S3_ENDPOINT:-http://minio:9000} ${S3_ACCESS_KEY:-minioadmin} ${S3_SECRET_KEY:-minioadmin} &&
+      /usr/bin/mc mb -p myminio/${S3_BUCKET:-crypto} || true &&
+      /usr/bin/mc anonymous set download myminio/${S3_BUCKET:-crypto} || true &&
+      exit 0
+      "
+
+  ingest:
+    build:
+      context: .
+      dockerfile: ingest/Dockerfile
+    environment:
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+      TOPIC_TRADES: ${TOPIC_TRADES:-trades_raw}
+      TOPIC_DLQ: ${TOPIC_DLQ:-trades_dlq}
+      SYMBOLS: ${SYMBOLS:-btcusdt,ethusdt,solusdt}
+      BINANCE_WS_BASE: ${BINANCE_WS_BASE:-wss://stream.binance.com:9443/stream?streams=}
+      METRICS_PORT: ${INGEST_METRICS_PORT:-8000}
+    ports:
+      - "8001:${INGEST_METRICS_PORT:-8000}"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  processor:
+    build:
+      context: .
+      dockerfile: processor/Dockerfile
+    environment:
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+      TOPIC_TRADES: ${TOPIC_TRADES:-trades_raw}
+      TOPIC_DLQ: ${TOPIC_DLQ:-trades_dlq}
+      WINDOW_MS: ${WINDOW_MS:-60000}
+      ALLOWED_LATENESS_MS: ${ALLOWED_LATENESS_MS:-10000}
+      DEDUP_TTL_SECONDS: ${DEDUP_TTL_SECONDS:-600}
+      DEDUP_MAXSIZE: ${DEDUP_MAXSIZE:-500000}
+      CLICKHOUSE_HOST: ${CLICKHOUSE_HOST:-clickhouse}
+      CLICKHOUSE_PORT: ${CLICKHOUSE_PORT:-8123}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-crypto}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-crypto}
+      S3_PREFIX: ${S3_PREFIX:-ohlc_1m}
+      METRICS_PORT: ${PROCESSOR_METRICS_PORT:-8000}
+    ports:
+      - "8002:${PROCESSOR_METRICS_PORT:-8000}"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      clickhouse:
+        condition: service_started
+      createbuckets:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - ingest
+      - processor
+      - redpanda
+  redash-redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redash-postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${REDASH_DB_NAME:-redash}
+      POSTGRES_USER: ${REDASH_DB_USER:-redash}
+      POSTGRES_PASSWORD: ${REDASH_DB_PASSWORD:-redash}
+    volumes:
+      - redash_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${REDASH_DB_USER:-redash}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redash:
+    image: redash/redash:26.3.0
+    command: server
+    ports:
+      - "5050:5000"
+    environment:
+      REDASH_DATABASE_URL: ${REDASH_DATABASE_URL:-postgresql://${REDASH_DB_USER:-redash}:${REDASH_DB_PASSWORD:-redash}@redash-postgres:5432/${REDASH_DB_NAME:-redash}}
+      REDASH_REDIS_URL: ${REDASH_REDIS_URL:-redis://redash-redis:6379/0}
+      REDASH_COOKIE_SECRET: ${REDASH_COOKIE_SECRET:-replace-with-secure-cookie}
+      REDASH_SECRET_KEY: ${REDASH_SECRET_KEY:-replace-with-secure-secret}
+      REDASH_LOG_LEVEL: ${REDASH_LOG_LEVEL:-INFO}
+      REDASH_GUNICORN_TIMEOUT: ${REDASH_GUNICORN_TIMEOUT:-120}
+      REDASH_WEB_WORKER_TIMEOUT: 120
+    depends_on:
+      - redash-redis
+      - redash-postgres
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  redash-worker:
+    image: redash/redash:26.3.0
+    command: worker
+    environment:
+      REDASH_DATABASE_URL: ${REDASH_DATABASE_URL:-postgresql://${REDASH_DB_USER:-redash}:${REDASH_DB_PASSWORD:-redash}@redash-postgres:5432/${REDASH_DB_NAME:-redash}}
+      REDASH_REDIS_URL: ${REDASH_REDIS_URL:-redis://redash-redis:6379/0}
+      REDASH_COOKIE_SECRET: ${REDASH_COOKIE_SECRET:-replace-with-secure-cookie}
+      REDASH_SECRET_KEY: ${REDASH_SECRET_KEY:-replace-with-secure-secret}
+      REDASH_LOG_LEVEL: ${REDASH_LOG_LEVEL:-INFO}
+    depends_on:
+      - redash-redis
+      - redash-postgres
+
+  grafana:
+    image: grafana/grafana:10.0.10
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-grafana}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+volumes:
+  clickhouse_data:
+  minio_data:
+  redash_postgres_data:
+  grafana_data:

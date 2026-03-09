@@ -1,0 +1,38 @@
+groups:
+- name: coinstream-alerts
+  rules:
+  - alert: CoinStreamProcessorDown
+    expr: up{job="coinstream-processor"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "CoinStream processor is down"
+      runbook: "docs/runbook.md#processor-down"
+
+  - alert: KafkaConsumerLagHigh
+    expr: kafka_consumer_lag_sum{group="coinstream-processor"} > 10000
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Kafka consumer lag high (>{{ $value }})"
+      runbook: "docs/runbook.md#consumer-lag-high"
+
+  - alert: PipelineFreshnessHigh
+    expr: coinstream_freshness_seconds > 120
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Freshness delay high (>{{ $value }}s)"
+      runbook: "docs/runbook.md#freshness-high"
+
+  - alert: E2ELatencyHighP95
+    expr: coinstream_e2e_latency_p95_ms > 2000
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "E2E latency p95 high (>{{ $value }}ms)"
+      runbook: "docs/runbook.md#e2e-latency-high"

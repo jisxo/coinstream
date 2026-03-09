@@ -1,4 +1,5 @@
 import signal
+import socket
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -18,7 +19,7 @@ from processor.sink import build_clickhouse_client, build_s3_client, ensure_s3_b
 from processor.mart import ensure_clickhouse_schema, write_mart_ohlcv, write_mart_pipeline_health
 from processor.window import OhlcAgg, window_bounds
 
-BOOTSTRAP_RETRIES = 30
+BOOTSTRAP_RETRIES = 90
 BOOTSTRAP_RETRY_DELAY_SECONDS = 2.0
 
 
@@ -36,24 +37,32 @@ def normalize_message(value: bytes) -> Dict[str, object]:
 
 def _connect_clickhouse_with_retry(config: ProcessorConfig):
     last_exc = None
+    base_host = config.clickhouse_host.strip()
+    host_candidates = [base_host]
+    if base_host and not base_host.endswith(".internal"):
+        host_candidates.append(f"{base_host}.internal")
+
     for attempt in range(1, BOOTSTRAP_RETRIES + 1):
-        try:
-            ch_client = build_clickhouse_client(
-                host=config.clickhouse_host,
-                port=config.clickhouse_port,
-                username=config.clickhouse_user,
-                password=config.clickhouse_password,
-                database=config.clickhouse_database,
-            )
-            ensure_clickhouse_schema(ch_client)
-            return ch_client
-        except Exception as exc:  # startup retry
-            last_exc = exc
-            print(
-                f"[bootstrap] clickhouse connect failed ({attempt}/{BOOTSTRAP_RETRIES}): {exc}",
-                flush=True,
-            )
-            time.sleep(BOOTSTRAP_RETRY_DELAY_SECONDS)
+        for host in host_candidates:
+            try:
+                socket.getaddrinfo(host, config.clickhouse_port)
+                ch_client = build_clickhouse_client(
+                    host=host,
+                    port=config.clickhouse_port,
+                    username=config.clickhouse_user,
+                    password=config.clickhouse_password,
+                    database=config.clickhouse_database,
+                )
+                ensure_clickhouse_schema(ch_client)
+                print(f"[bootstrap] clickhouse connected: {host}:{config.clickhouse_port}", flush=True)
+                return ch_client
+            except Exception as exc:  # startup retry
+                last_exc = exc
+                print(
+                    f"[bootstrap] clickhouse connect failed ({attempt}/{BOOTSTRAP_RETRIES}) host={host!r}: {exc}",
+                    flush=True,
+                )
+        time.sleep(BOOTSTRAP_RETRY_DELAY_SECONDS)
     raise RuntimeError("clickhouse bootstrap failed") from last_exc
 
 

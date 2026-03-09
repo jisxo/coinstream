@@ -226,18 +226,19 @@ def main() -> None:
             flushed_rows = flush_windows(state, watermark_ms, ch_client, s3_client, config, metrics)
             if flushed_rows:
                 duration = time.perf_counter() - t0
-                metrics.processor_messages.inc(len(flushed_rows))
-                metrics.pipeline_throughput.set(len(flushed_rows))
-                metrics.pipeline_latency_ms.set(latency_ms)
-                metrics.pipeline_lag_ms.set(lag_ms)
-                metrics.pipeline_freshness_seconds.set(freshness_seconds)
-                metrics.pipeline_window_start_ms.set(window_start.timestamp() * 1000)
-                metrics.emission_latency.observe(duration)
                 throughput = len(flushed_rows)
                 latency_ms = duration * 1000
                 lag_ms = max(0, int(time.time() * 1000 - max_event_time_ms))
                 freshness_seconds = lag_ms / 1000
                 window_start = max(row["window_start"] for row in flushed_rows)
+
+                metrics.processor_messages.inc(len(flushed_rows))
+                metrics.pipeline_throughput.set(throughput)
+                metrics.pipeline_latency_ms.set(latency_ms)
+                metrics.pipeline_lag_ms.set(lag_ms)
+                metrics.pipeline_freshness_seconds.set(freshness_seconds)
+                metrics.pipeline_window_start_ms.set(window_start.timestamp() * 1000)
+                metrics.emission_latency.observe(duration)
                 write_mart_pipeline_health(
                     ch_client,
                     window_start,

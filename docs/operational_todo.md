@@ -8,7 +8,7 @@
 | Dedup + TTL + checkpoint 복구 | ✅ 구현 완료 (`processor/checkpoint.py`) | 체크포인트 복구 drill을 주기적으로 기록 |
 | ClickHouse Hot sink + Mart | ✅ `crypto.ohlc_1m`, `coinstream.mart_*` 운영 중 | mart 기반 Redash 쿼리 저장본 확대 |
 | MinIO/Parquet Cold sink | ✅ 업로드 동작 확인됨 | 운영 종료 전 백업/정리 루틴 문서화 유지 |
-| Alert 룰 정합성 | ✅ 코드 메트릭명 기준으로 정렬 완료 (`docs/observability/alert_rules.yml`) | Alertmanager 연동 시 채널(슬랙 등)만 추가 |
+| Alert 룰 정합성 + 이메일 알림 | ✅ 코드 메트릭명 기준으로 정렬 + Prometheus 내장 Alertmanager 이메일 전송 검증 완료 | 필요 시 Slack/Webhook 채널 추가 |
 | Redash 운영 | ✅ web/worker 분리 운영, worker on-demand 가능 | 실제 대시보드 export JSON 갱신 |
 | 문서 동기화 | ✅ Render 중심 문서로 갱신 중 | 새 배포 방식 변경 시 즉시 업데이트 |
 

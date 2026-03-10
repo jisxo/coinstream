@@ -134,6 +134,7 @@ All processors share the same consumer group; partitions are distributed automat
 - `docs/runbook.md` + `docs/incidents/incident_template.md`: alert별 체크리스트/조치·incidents 기록 포맷입니다.
 - `docs/minio_bootstrap.md`: MinIO bucket 자동 bootstrap 동작과 Render 점검 절차입니다.
 - `docs/observability_render.md`: Render에 Prometheus/Grafana를 붙이는 단계별 설정 가이드입니다.
+- `alertmanager/Dockerfile`, `alertmanager/entrypoint.sh`: Render Alertmanager 이메일 알림 서비스 구성입니다.
 - `docs/redash_setup.md` + `docs/dashboards/redash/queries/`: Redash 연결/데이터소스 등록과 Saved Query 템플릿입니다.
 - `docs/operations_shutdown.md`: 운영 종료/재가동 순서와 백업 체크리스트입니다.
 - `docs/observability/alert_rules.yml`, `prometheus/prometheus.yml`: Prometheus scraping/alert 룰과 Alertmanager 연계 기준을 정의했습니다.

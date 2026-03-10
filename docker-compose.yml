@@ -139,7 +139,16 @@ services:
       - "6379:6379"
 
   prometheus:
-    image: prom/prometheus:v2.55.1
+    build:
+      context: .
+      dockerfile: prometheus/Dockerfile
+    environment:
+      SMTP_SMARTHOST: ${SMTP_SMARTHOST:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_AUTH_USERNAME: ${SMTP_AUTH_USERNAME:-}
+      SMTP_AUTH_PASSWORD: ${SMTP_AUTH_PASSWORD:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      SMTP_REQUIRE_TLS: ${SMTP_REQUIRE_TLS:-true}
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./docs/observability/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
@@ -149,15 +158,6 @@ services:
       - ingest
       - processor
       - redpanda
-
-  alertmanager:
-    image: prom/alertmanager:v0.28.1
-    command:
-      - --config.file=/etc/alertmanager/alertmanager.yml
-    volumes:
-      - ./alertmanager/alertmanager.local.yml:/etc/alertmanager/alertmanager.yml:ro
-    ports:
-      - "9093:9093"
   redash-redis:
     image: redis:7-alpine
     healthcheck:

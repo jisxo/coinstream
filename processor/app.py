@@ -38,10 +38,7 @@ def normalize_message(value: bytes) -> Dict[str, object]:
 def _connect_clickhouse_with_retry(config: ProcessorConfig):
     last_exc = None
     base_host = config.clickhouse_host.strip()
-    host_candidates = []
-    if base_host and not base_host.endswith(".internal"):
-        host_candidates.append(f"{base_host}.internal")
-    host_candidates.append(base_host)
+    host_candidates = [base_host]
 
     for attempt in range(1, BOOTSTRAP_RETRIES + 1):
         for host in host_candidates:

@@ -38,9 +38,10 @@ def normalize_message(value: bytes) -> Dict[str, object]:
 def _connect_clickhouse_with_retry(config: ProcessorConfig):
     last_exc = None
     base_host = config.clickhouse_host.strip()
-    host_candidates = [base_host]
+    host_candidates = []
     if base_host and not base_host.endswith(".internal"):
         host_candidates.append(f"{base_host}.internal")
+    host_candidates.append(base_host)
 
     for attempt in range(1, BOOTSTRAP_RETRIES + 1):
         for host in host_candidates:
@@ -252,30 +253,37 @@ def main() -> None:
         # flush
         if time.time() - last_flush >= 1.0:
             t0 = time.perf_counter()
-            flushed_rows = flush_windows(state, watermark_ms, ch_client, s3_client, config, metrics)
-            if flushed_rows:
-                duration = time.perf_counter() - t0
-                throughput = len(flushed_rows)
-                latency_ms = duration * 1000
-                lag_ms = max(0, int(time.time() * 1000 - max_event_time_ms))
-                freshness_seconds = lag_ms / 1000
-                window_start = max(row["window_start"] for row in flushed_rows)
+            try:
+                flushed_rows = flush_windows(state, watermark_ms, ch_client, s3_client, config, metrics)
+                if flushed_rows:
+                    duration = time.perf_counter() - t0
+                    throughput = len(flushed_rows)
+                    latency_ms = duration * 1000
+                    lag_ms = max(0, int(time.time() * 1000 - max_event_time_ms))
+                    freshness_seconds = lag_ms / 1000
+                    window_start = max(row["window_start"] for row in flushed_rows)
 
-                metrics.processor_messages.inc(len(flushed_rows))
-                metrics.pipeline_throughput.set(throughput)
-                metrics.pipeline_latency_ms.set(latency_ms)
-                metrics.pipeline_lag_ms.set(lag_ms)
-                metrics.pipeline_freshness_seconds.set(freshness_seconds)
-                metrics.pipeline_window_start_ms.set(window_start.timestamp() * 1000)
-                metrics.emission_latency.observe(duration)
-                write_mart_pipeline_health(
-                    ch_client,
-                    window_start,
-                    throughput,
-                    latency_ms,
-                    lag_ms,
-                    freshness_seconds,
-                )
+                    metrics.processor_messages.inc(len(flushed_rows))
+                    metrics.pipeline_throughput.set(throughput)
+                    metrics.pipeline_latency_ms.set(latency_ms)
+                    metrics.pipeline_lag_ms.set(lag_ms)
+                    metrics.pipeline_freshness_seconds.set(freshness_seconds)
+                    metrics.pipeline_window_start_ms.set(window_start.timestamp() * 1000)
+                    metrics.emission_latency.observe(duration)
+                    write_mart_pipeline_health(
+                        ch_client,
+                        window_start,
+                        throughput,
+                        latency_ms,
+                        lag_ms,
+                        freshness_seconds,
+                    )
+            except Exception as exc:
+                print(f"[flush] pipeline write failed: {exc}", flush=True)
+                try:
+                    ch_client = _connect_clickhouse_with_retry(config)
+                except Exception as reconnect_exc:
+                    print(f"[flush] clickhouse reconnect failed: {reconnect_exc}", flush=True)
             last_flush = time.time()
 
         # checkpoint

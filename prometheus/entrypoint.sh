@@ -10,10 +10,6 @@ if [ -n "${ALERT_EMAIL_TO:-}" ] && [ -n "${SMTP_FROM:-}" ] && [ -n "${SMTP_AUTH_
   if [ -n "${SMTP_HELLO:-}" ]; then
     SMTP_HELLO_LINE="  smtp_hello: '${SMTP_HELLO}'"
   fi
-  SMTP_IMPLICIT_TLS_LINE=""
-  if [ -n "${SMTP_IMPLICIT_TLS:-}" ]; then
-    SMTP_IMPLICIT_TLS_LINE="        implicit_tls: ${SMTP_IMPLICIT_TLS}"
-  fi
   cat > /tmp/alertmanager.yml <<EOF
 global:
   smtp_smarthost: '${SMTP_SMARTHOST}'
@@ -35,7 +31,6 @@ receivers:
     email_configs:
       - to: '${ALERT_EMAIL_TO}'
         send_resolved: true
-${SMTP_IMPLICIT_TLS_LINE}
 EOF
 else
   cat > /tmp/alertmanager.yml <<'EOF'

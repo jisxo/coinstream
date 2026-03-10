@@ -1,4 +1,4 @@
-# CoinStream Ops/BI Layer Add-on (Dunamu JD 증빙용)
+# CoinStream Ops/BI Layer Add-on
 
 이 패키지는 **이미 구현된 수집/프로세서 코드에 “덧붙이는(overlay)” 산출물 묶음**입니다.
 목표는 고가용/실시간 스트리밍 파이프라인의 운영/BI 증빙을 레포에 **문서화 형태로 남기는 것**입니다.

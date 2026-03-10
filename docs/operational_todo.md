@@ -1,15 +1,17 @@
 # 운영 루프 완성 TODO
 
-# 다음 항목은 “Binance aggTrade → Kafka → Python processor → ClickHouse/MinIO + Observability” 작업의 완성도를 체크하기 위한 TODO 리스트입니다. 각 항목에서 현재 상태와 다음 단계가 기록되어 있습니다.
+현재 스택(`Binance aggTrade -> Redpanda -> processor -> ClickHouse/MinIO + Prometheus/Grafana/Redash`) 기준 TODO입니다.
 
 | 항목 | 현재 상태 | 다음 조치 |
 |---|---|---|
-| Python processor: event-time + watermark window(1s/1m) | ✅ 1분 윈도우까지 구현됨(`window_bounds`, `flush_windows`) | 1초 윈도우 추가 여부는 필요시 업그레이드
-| Dedup(key=symbol+agg_trade_id) + TTL | ✅ `cachetools.TTLCache`로 `processor/app.py`에서 관리됨, checkpoint로 복원 | TTL/size 조정은 `.env`에서 가능, 상태 기반 모니터링 추가 가능
-| Checkpoint(snapshot state + offsets) | ✅ `processor/checkpoint.py` 복원/저장 + config (`CHECKPOINT_STORE`, `CHECKPOINT_INTERVAL_MS`) | 재시작 시 실제 재생 테스트 문서화 (README, docs/architecture.md 참조)
-| ClickHouse Hot sink (`crypto.ohlc_1m`) | ✅ window flush에서 생성된 row를 `clickhouse`에 저장 | mart 테이블로 구간별 런칭 + downstream ingest 고려
-| MinIO/Parquet Cold sink | ✅ `processor/app.py`에서 `pyarrow` Parquet 생성 후 `MinIO` 업로드 | replay 모드/파일 기반 재처리 스크립트 (`scripts/replay.md`) 추가 예정
-| Prometheus metrics + Grafana | ✅ ingest/processor `/metrics` + Prometheus 서비스/GUI | Grafana 대시보드 JSON + README에 지표 스크린샷 경로 추가
-| Redash SQL dashboard + 알림/Runbook | ✅ Redash 연결 문서 + query folder 정리 | redash dashboard export + 청사진 Runbook `(docs/runbook.md)` 정리
+| Processor event-time/watermark + 다중 윈도우 | ✅ 구현 완료 (`processor/window.py`, `processor/app.py`) | 윈도우별 리소스 사용량 벤치마크 갱신 |
+| Dedup + TTL + checkpoint 복구 | ✅ 구현 완료 (`processor/checkpoint.py`) | 체크포인트 복구 drill을 주기적으로 기록 |
+| ClickHouse Hot sink + Mart | ✅ `crypto.ohlc_1m`, `coinstream.mart_*` 운영 중 | mart 기반 Redash 쿼리 저장본 확대 |
+| MinIO/Parquet Cold sink | ✅ 업로드 동작 확인됨 | 운영 종료 전 백업/정리 루틴 문서화 유지 |
+| Alert 룰 정합성 | ✅ 코드 메트릭명 기준으로 정렬 완료 (`docs/observability/alert_rules.yml`) | Alertmanager 연동 시 채널(슬랙 등)만 추가 |
+| Redash 운영 | ✅ web/worker 분리 운영, worker on-demand 가능 | 실제 대시보드 export JSON 갱신 |
+| 문서 동기화 | ✅ Render 중심 문서로 갱신 중 | 새 배포 방식 변경 시 즉시 업데이트 |
 
-추가로 필요한 문서/스크립트는 `docs/architecture.md`, `README`, `docs/runbook.md`, `scripts/` 내 파일들에서 차례로 채워 넣으면 됩니다.
+참고:
+- Redash worker는 비용 최적화를 위해 필요 시에만 `Resume`해서 사용합니다.
+- Prometheus를 내리면 Grafana 시계열에 공백이 생기므로 목적에 맞춰 ON/OFF를 결정하세요.

@@ -92,10 +92,12 @@ All processors share the same consumer group; partitions are distributed automat
 - Grafana는 `grafana/dashboards/coinstream-overview.json`를 자동 로드합니다.
 
 ## 6) Redash 실행/접속
-- `docker compose up -d redash-redis redash-postgres redash`으로 Redash+Redis+Postgres를 띄운 뒤 http://localhost:5050 으로 접속하면 최초 로그인 화면 또는 관리자 생성 화면이 나타납니다.
-- Worker가 읽기 테스트를 처리할 수 있도록 `redash-worker`를 함께 띄우려면 `docker compose up -d redash-worker`도 추가로 실행하세요.
-- Redash UI에서 `docs/redash_setup.md`에 기록한 순서대로 ClickHouse 데이터 소스를 추가하고 테스트 전에 먼저 Compose 네트워크에서 `curl "http://clickhouse:8123/?database=crypto&query=SELECT%201"`를 실행해 호스트/포트/인증이 제대로 동작하는지 확인한 뒤 `SELECT 1 AS readiness` 등을 실행해 보세요.
-- 운영 증빙용 쿼리나 대시보드는 `docs/dashboards/redash/queries/` 경로에 저장하고, 필요한 경우 `docs/kpi_definition.md` / `observability/alert_rules.yml`도 함께 갱신합니다.
+- 로컬 Compose: `docker compose up -d redash-redis redash-postgres redash redash-worker`
+- Render:
+  - `redash-web` start command: `/app/bin/docker-entrypoint server`
+  - `redash-worker` start command: `python3 /app/manage.py rq worker queries`
+- 데이터 소스 연결/테스트는 `docs/redash_setup.md` 기준으로 진행합니다.
+- SQL 쿼리는 `docs/dashboards/redash/queries/`에 저장하고, 대시보드 export JSON은 `docs/dashboards/redash/dashboard.json`으로 관리합니다.
 
 ## 7) Notes / limitations
 - This is a runnable demo. For strict end-to-end exactly-once, you'd typically use Flink checkpointing + transactional sinks.
@@ -133,6 +135,7 @@ All processors share the same consumer group; partitions are distributed automat
 - `docs/minio_bootstrap.md`: MinIO bucket 자동 bootstrap 동작과 Render 점검 절차입니다.
 - `docs/observability_render.md`: Render에 Prometheus/Grafana를 붙이는 단계별 설정 가이드입니다.
 - `docs/redash_setup.md` + `docs/dashboards/redash/queries/`: Redash 연결/데이터소스 등록과 Saved Query 템플릿입니다.
+- `docs/operations_shutdown.md`: 운영 종료/재가동 순서와 백업 체크리스트입니다.
 - `docs/observability/alert_rules.yml`, `prometheus/prometheus.yml`: Prometheus scraping/alert 룰과 Alertmanager 연계 기준을 정의했습니다.
 - `prometheus/Dockerfile`, `prometheus/prometheus.render.yml`: Render용 Prometheus 이미지/스크랩 설정입니다.
 - `grafana/Dockerfile`, `grafana/provisioning/*`, `grafana/dashboards/*`: Render용 Grafana 자동 프로비저닝 구성입니다.

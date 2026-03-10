@@ -1,4 +1,5 @@
 {
+  "_note": "template dashboard. query_id 값은 실제 Redash export 시점에 재생성됩니다.",
   "name": "CoinStream Operations",
   "description": "OHLCV / volatility / freshness overview",
   "widgets": [
@@ -31,6 +32,12 @@
       "type": "visualization",
       "query_id": 5,
       "position": {"col": 8, "row": 0, "size_x": 4, "size_y": 3}
+    },
+    {
+      "name": "Late Event Trend",
+      "type": "visualization",
+      "query_id": 6,
+      "position": {"col": 8, "row": 3, "size_x": 4, "size_y": 3}
     }
   ]
 }

@@ -1,53 +1,72 @@
-# Redash 운영 지원
+# Redash 운영 가이드 (Render 기준)
 
-이 문서는 로컬 Compose 환경에서 Redash를 띄우고 ClickHouse를 데이터 소스로 연결하는 기본 흐름을 정리합니다.
+이 문서는 Render에 올린 Redash(web/worker)와 ClickHouse 데이터 소스를 안정적으로 운영하는 기준을 정리합니다.
 
-## 1. Redash 스택 실행
+## 1) 서비스 설정
 
-1. `.env`에서 `REDASH_*` 값을 검토하고 필요하면 강력한 `COOKIE_SECRET`/`SECRET_KEY` 및 Postgres 비밀번호를 채웁니다.
-2. 다음 명령으로 Redash + 의존 서비스를 백그라운드로 올립니다:
-   ```bash
-   docker compose up -d redash-redis redash-postgres redash redash-worker
-   ```
-3. `docker compose logs -f redash`를 보면 `Starting server` 이후 `Running on` 로그를 확인할 수 있고, Redash Health 체크(`http://localhost:5050/health`)가 통과하면 UI 접속 준비가 끝난 것입니다.
-4. 기본 화면(`http://localhost:5050`)으로 접속하면 최초 관리자 계정을 만들라는 안내가 나오며, 이메일/패스워드를 입력해서 계정을 생성합니다.
+### redash-web
+- Service type: Web Service
+- Start command: `/app/bin/docker-entrypoint server`
+- 필수 env:
+  - `REDASH_DATABASE_URL`
+  - `REDASH_REDIS_URL`
+  - `REDASH_COOKIE_SECRET`
+  - `REDASH_SECRET_KEY`
+- 권장 env:
+  - `REDASH_WEB_WORKERS=1`
+  - `REDASH_WEB_WORKER_TIMEOUT=120`
 
-## 2. ClickHouse 데이터 소스 등록
+### redash-worker
+- Service type: Background Worker
+- Start command: `python3 /app/manage.py rq worker queries`
+- 필수 env:
+  - `REDASH_DATABASE_URL`
+  - `REDASH_REDIS_URL`
+  - `REDASH_COOKIE_SECRET`
+  - `REDASH_SECRET_KEY`
 
-1. Redash 좌측 상단 메뉴 → **Data Sources** → **Create** 를 클릭합니다.
-2. `Type`에서 **ClickHouse**를 선택합니다.
-3. 다음 값을 채웁니다:
+## 2) ClickHouse 데이터 소스 등록
+
+1. Redash UI -> Settings -> Data Sources -> New Data Source -> ClickHouse
+2. 아래 값 입력:
    | 필드 | 값 |
    | --- | --- |
-   | Name | `ClickHouse` (기호에 따라 변경) |
-   | Host | `clickhouse` (Compose 네트워크 이름) |
-   | Port | `8123` |
-   | Database Name | `crypto` |
-   | Username | `default` |
-   | Password | (기본 ClickHouse는 빈 값) |
-   | HTTP Path | `/` |
-   | Use HTTPS | 꺼짐 |
-4. `Save` 버튼을 누르면 Redash가 입력한 정보를 검증하고 `TEST CONNECTION` 버튼이 활성화됩니다.
-5. `TEST CONNECTION`을 클릭해 성공 메시지를 확인합니다.
+   | Name | `ClickHouse` |
+   | URL | `http://coinstream-clickhouse:8123` |
+   | Database Name | `coinstream` |
+   | Username | `redash` |
+   | Password | `<CLICKHOUSE_PASSWORD>` |
+3. Save 후 `Test Connection`
 
-## 3. 연결 확인 / 테스트 쿼리
+## 3) 연결 확인
 
-ClickHouse 데이터 소스가 추가되면 다음 쿼리를 실행해서 연결/쿼리 결과를 확인합니다:
-```sql
-SELECT 1 AS readiness;
-```
-이 결과가 반환되면 Redash가 ClickHouse로 쿼리 요청을 보내고 성공적으로 응답을 받았다는 의미입니다.
+Redash web Shell에서 직접 확인:
 
-사용자 설정, 비밀번호, 네트워크가 잘 맞는지 추가로 확인하고 싶다면 Redash 컨테이너에서 직접 HTTP 요청을 보내 보세요:
 ```bash
-docker compose exec redash \
-  curl -vsSf "http://clickhouse:8123/?database=crypto&query=SELECT%201"
+python3 - <<'PY'
+import urllib.request
+u = "http://coinstream-clickhouse:8123/?database=coinstream&query=SELECT%201"
+res = urllib.request.urlopen(u, timeout=5)
+print(res.status, res.read().decode().strip())
+PY
 ```
-`HTTP/1.1 200 OK`가 돌아오면 Compose 네트워크가 `clickhouse`를 잘 해석하고 있고, ClickHouse 쪽 `default` 유저(현 상황에서는 빈 패스워드)와 Redash 입력값이 일치한 상태입니다. 이 검증을 한 다음 `TEST CONNECTION`을 눌러 실제 UI에서도 같은 설정으로 연결이 가능한지 확인하면 됩니다.
 
-## 4. 운영 증빙
+- 결과가 `200 1`이면 네트워크는 정상입니다.
 
-- `docs/kpi_definition.md`에 `symbol_volatility_ratio` 등 실제 지표 정의를 기록하세요.
-- Redash 테스트나 Alert/Query 처리를 위해 `redash-worker`를 항상 띄워두세요 (`docker compose up -d redash-worker`).
-- `dashboards/redash/queries/`에 ClickHouse 기반 쿼리를 저장해 두면 나중에 Redash 대시보드를 복원하거나 사례로 공유하기 좋습니다.
-- 알림 기준을 `observability/alert_rules.yml`에 정리하고, Runbook·Incidents 문서도 함께 업데이트하면 JD 증빙 흐름이 완전히 갖춰집니다.
+## 4) 운영 체크
+
+- web/worker 정상 여부:
+  - web 로그에 500 반복 없음
+  - worker 로그에 `Listening on queries...`, `Job OK`
+- 데이터 소스 테스트 후 아래 쿼리로 데이터 확인:
+  ```sql
+  SELECT count() AS rows_10m
+  FROM coinstream.mart_ohlcv_1m
+  WHERE window_start >= now() - INTERVAL 10 MINUTE;
+  ```
+
+## 5) 대시보드 산출물 관리
+
+- SQL 파일: `docs/dashboards/redash/queries/*.sql`
+- 대시보드 템플릿: `docs/dashboards/redash/dashboard.json`
+- 실제 운영본은 Redash UI에서 `Export` 후 위 파일을 덮어써서 버전 관리합니다.

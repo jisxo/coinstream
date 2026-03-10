@@ -2,15 +2,19 @@
 
 > 목표: 알림 발생 시 **확인 → 원인 후보 → 조치 → 재발 방지** 절차를 체크리스트로 표준화
 
+## 공통 확인 경로
+- Render 운영: 각 서비스(Render Dashboard -> Logs / Shell / Events)
+- 로컬 운영: `docker compose ps`, `docker compose logs -f <service>`
+
 ## Processor Down
-1) 컨테이너 상태(`docker compose ps processor`)와 로그(`docker compose logs processor`) 확인
+1) 서비스 상태와 로그 확인 (Render `coinstream-processor` 또는 `docker compose ps processor`)
 2) `.env`/`processor/config.py` 변경 여부 점검 및 Secret 유효성 확인
-3) Kafka 브로커(`redpanda`)와 `trades_raw` 접근성 확인 (`rpk cluster info` / `curl kafka:9092`)
+3) Kafka 브로커(`redpanda`)와 `trades_raw` 접근성 확인
 4) 재시작 후 checkpoint restore 로그(`checkpoint_restores_total`)와 lag 감소 확인
 - 재발 방지: stack trace/metrics + `docs/incidents/incident_template.md`에 기록
 
 ## Consumer Lag High
-1) Grafana/Prometheus(`kafka_consumer_lag_sum`, `consumer_lag_ms_approx`)에서 lag 상승 시점 파악
+1) Grafana/Prometheus(`processor_lag_seconds`, `consumer_lag_ms_approx`)에서 lag 상승 시점 파악
 2) processor throughput 대비 ingest events/sec 비율 점검
 3) ClickHouse insert 오류/slow write 확인 (`processor/app.py` metric + log)
 4) 조치
@@ -39,5 +43,5 @@
 
 ## Incident drill
 1) alert name/measurements를 `docs/incidents/incident_template.md`에 기록
-2) 로그/metrics 스냅샷(`docker compose logs`, Prometheus query) 첨부
+2) 로그/metrics 스냅샷(Render Logs 또는 `docker compose logs`, Prometheus query) 첨부
 3) 재발 방지를 위한 test case/monitor rule 업데이트

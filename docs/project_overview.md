@@ -1,6 +1,6 @@
 # Project overview & quick flow
 
-이 저장소는 Binance aggTrade 스트림 → Kafka(Redpanda) → Python processor → ClickHouse/MinIO + Observability(Pr&Grafana/Redash)까지 연결된 스트리밍 데모입니다. 아래 항목은 주요 디렉터리/실행 흐름을 정리한 것입니다.
+이 저장소는 Binance aggTrade 스트림 → Kafka(Redpanda) → Python processor → ClickHouse/MinIO + Observability(Prometheus/Grafana/Redash)까지 연결된 스트리밍 데모입니다. 아래 항목은 주요 디렉터리/실행 흐름을 정리한 것입니다.
 
 ## 디렉터리/파일 맵
 - `ingest/` : Binance WebSocket을 구독하고 `normalize_event`로 `event_time_ms`, `symbol`, `agg_trade_id`, `price`, `quantity`, `is_buyer_maker`, `stream` 필드를 갖는 JSON 메시지를 만들고 `trades_raw` 토픽에 전송합니다. `ingest/app.py`가 진입점입니다.
@@ -14,6 +14,11 @@
 2. `docker compose up -d --build`를 실행하면 Redpanda, ClickHouse, MinIO, Redis, ingest, processor, prometheus, redash 등 전체 스택이 올라옵니다.
 3. Kafka 토픽이 필요하면 `docker compose exec redpanda rpk topic create ...`로 직접 생성합니다(이미 `trades_raw`, `trades_dlq`가 빈 상태로 존재).
 4. `docker compose logs -f ingest`/`processor`로 수집/처리 상태를 확인하고, `docker compose exec clickhouse clickhouse-client -q "SHOW TABLES FROM crypto"` 등으로 ClickHouse 테이블을 확인합니다.
+
+### Render 운영 시 핵심 포인트
+- `coinstream-processor`, `coinstream-ingest`는 같은 region에서 동작해야 내부 DNS 지연/해석 실패를 줄일 수 있습니다.
+- Redash worker start command는 `python3 /app/manage.py rq worker queries`를 사용합니다.
+- Redash worker는 on-demand로 Resume/Suspend해서 비용을 줄일 수 있습니다.
 
 ## 검증 명령 (변경 전/후 기준)
 - `docker compose exec ingest python -m ingest.app` (ingest 독립 실행) 또는 `docker compose up -d ingest` (compose)을 통해 WebSocket → Kafka 흐름을 테스트합니다.

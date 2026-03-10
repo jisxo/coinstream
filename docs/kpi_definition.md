@@ -1,4 +1,4 @@
-# KPI 정의서 (CoinStream / Dunamu 지원용)
+# KPI 정의서 (CoinStream)
 
 > 목적: **KPI 정의 → 마트 → BI → 알림 → 대응(Runbook/Drill)** 운영 루프 증빙
 

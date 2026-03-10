@@ -2,7 +2,7 @@ groups:
 - name: coinstream-alerts
   rules:
   - alert: CoinStreamProcessorDown
-    expr: up{job="coinstream-processor"} == 0
+    expr: up{job="processor"} == 0
     for: 1m
     labels:
       severity: critical
@@ -11,16 +11,16 @@ groups:
       runbook: "docs/runbook.md#processor-down"
 
   - alert: KafkaConsumerLagHigh
-    expr: kafka_consumer_lag_sum{group="coinstream-processor"} > 10000
+    expr: max_over_time(processor_lag_seconds[5m]) > 120
     for: 2m
     labels:
       severity: warning
     annotations:
-      summary: "Kafka consumer lag high (>{{ $value }})"
+      summary: "Processor lag is high (>{{ $value }}s)"
       runbook: "docs/runbook.md#consumer-lag-high"
 
   - alert: PipelineFreshnessHigh
-    expr: coinstream_freshness_seconds > 120
+    expr: max_over_time(processor_pipeline_freshness_seconds[5m]) > 120
     for: 2m
     labels:
       severity: warning
@@ -29,7 +29,7 @@ groups:
       runbook: "docs/runbook.md#freshness-high"
 
   - alert: E2ELatencyHighP95
-    expr: coinstream_e2e_latency_p95_ms > 2000
+    expr: histogram_quantile(0.95, rate(window_emission_latency_seconds_bucket[5m])) * 1000 > 2000
     for: 2m
     labels:
       severity: warning

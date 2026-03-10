@@ -12,6 +12,17 @@
   - `SMTP_AUTH_PASSWORD` (앱 비밀번호)
   - `ALERT_EMAIL_TO`
   - `SMTP_REQUIRE_TLS=true`
+  - `SMTP_IMPLICIT_TLS` (465 포트 SSL 메일 서버면 `true`)
+  - `SMTP_HELLO` (필요 시 EHLO 도메인 지정)
+
+예시 (카카오 메일):
+- `SMTP_SMARTHOST=smtp.kakao.com:465`
+- `SMTP_REQUIRE_TLS=false`
+- `SMTP_IMPLICIT_TLS=true`
+- `SMTP_FROM=<카카오메일주소>`
+- `SMTP_AUTH_USERNAME=<카카오메일주소>`
+- `SMTP_AUTH_PASSWORD=<외부메일 앱 비밀번호>`
+- `ALERT_EMAIL_TO=<수신메일>`
 
 > `prometheus/prometheus.render.yml`의 타겟명(`coinstream-ingest`, `coinstream-processor`, `coinstream-redpanda`)은 Render 서비스명과 같아야 합니다.
 

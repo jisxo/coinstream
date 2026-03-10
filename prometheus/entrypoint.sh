@@ -6,6 +6,14 @@ mkdir -p /tmp/alertmanager
 if [ -n "${ALERT_EMAIL_TO:-}" ] && [ -n "${SMTP_FROM:-}" ] && [ -n "${SMTP_AUTH_USERNAME:-}" ] && [ -n "${SMTP_AUTH_PASSWORD:-}" ]; then
   : "${SMTP_SMARTHOST:=smtp.gmail.com:587}"
   : "${SMTP_REQUIRE_TLS:=true}"
+  SMTP_HELLO_LINE=""
+  if [ -n "${SMTP_HELLO:-}" ]; then
+    SMTP_HELLO_LINE="  smtp_hello: '${SMTP_HELLO}'"
+  fi
+  SMTP_IMPLICIT_TLS_LINE=""
+  if [ -n "${SMTP_IMPLICIT_TLS:-}" ]; then
+    SMTP_IMPLICIT_TLS_LINE="        implicit_tls: ${SMTP_IMPLICIT_TLS}"
+  fi
   cat > /tmp/alertmanager.yml <<EOF
 global:
   smtp_smarthost: '${SMTP_SMARTHOST}'
@@ -13,6 +21,7 @@ global:
   smtp_auth_username: '${SMTP_AUTH_USERNAME}'
   smtp_auth_password: '${SMTP_AUTH_PASSWORD}'
   smtp_require_tls: ${SMTP_REQUIRE_TLS}
+${SMTP_HELLO_LINE}
 
 route:
   receiver: 'email'
@@ -26,6 +35,7 @@ receivers:
     email_configs:
       - to: '${ALERT_EMAIL_TO}'
         send_resolved: true
+${SMTP_IMPLICIT_TLS_LINE}
 EOF
 else
   cat > /tmp/alertmanager.yml <<'EOF'

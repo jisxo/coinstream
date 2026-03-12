@@ -12,6 +12,7 @@ from prometheus_client import start_http_server
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from processor.checkpoint_restore import CheckpointRestoreHandler
 from processor.config import ProcessorConfig
 from processor.metrics import ProcessorMetrics
 from processor.checkpoint import load_checkpoint, save_checkpoint
@@ -171,8 +172,6 @@ def main() -> None:
             "max.partition.fetch.bytes": 4_194_304,
         }
     )
-    consumer.subscribe([config.kafka.topic_trades])
-    consumer.poll(0)
 
     dedup = TTLCache(maxsize=config.dedup_maxsize, ttl=config.dedup_ttl_seconds)  # dedup cache
     state: dict[tuple[str, int], dict[int, OhlcAgg]] = {}  # (symbol, window_ms) -> windows
@@ -187,14 +186,16 @@ def main() -> None:
                 (agg.window_end_ms for windows in state.values() for agg in windows.values()),
                 default=0,
             )
-        metrics.checkpoint_restores.inc()
-    assignment = consumer.assignment()
-    if saved_offsets and assignment:
-        offsets_map = { (entry["topic"], entry["partition"]): entry["offset"] for entry in saved_offsets }
-        for tp in assignment:
-            key = (tp.topic, tp.partition)
-            if key in offsets_map:
-                consumer.seek(TopicPartition(tp.topic, tp.partition, offsets_map[key]))
+        print(
+            "[checkpoint] loaded snapshot "
+            f"state_entries={sum(len(windows) for windows in state.values())} "
+            f"dedup_entries={len(dedup)} "
+            f"offsets={len(saved_offsets or [])}",
+            flush=True,
+        )
+
+    restore_handler = CheckpointRestoreHandler(saved_offsets, metrics)
+    consumer.subscribe([config.kafka.topic_trades], on_assign=restore_handler.on_assign)
 
     exit_ctl = GracefulExit()
     signal.signal(signal.SIGINT, exit_ctl.handler)

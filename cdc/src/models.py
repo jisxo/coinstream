@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional
 
 def parse_datetime(value: Any) -> datetime:
     if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)
     if isinstance(value, (int, float)):
         # interpret as unix milliseconds when large enough
@@ -16,7 +18,10 @@ def parse_datetime(value: Any) -> datetime:
         return datetime.fromtimestamp(ts, tz=timezone.utc)
     if isinstance(value, str):
         normalized = value.replace("Z", "+00:00")
-        return datetime.fromisoformat(normalized).astimezone(timezone.utc)
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
     raise ValueError(f"Unsupported datetime value: {value!r}")
 
 
@@ -92,4 +97,3 @@ class OrderState:
     source_updated_at: datetime
     is_deleted: int
     source_offset: int
-

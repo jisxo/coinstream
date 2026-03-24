@@ -389,7 +389,9 @@ def insert_states(ch: Any, states: Sequence[OrderState]) -> None:
     ]
     values = []
     for state in states:
-        version = int(state.source_updated_at.timestamp() * 1000) * 10_000 + int(state.source_offset)
+        # ReplacingMergeTree version should be monotonic for a given key.
+        # Use source_offset so newer CDC records always win even if timestamps are synthetic/old.
+        version = max(0, int(state.source_offset))
         values.append(
             [
                 state.order_id,

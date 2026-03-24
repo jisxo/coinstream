@@ -168,6 +168,56 @@ def test_old_event_ignored():
     assert next_state == current
 
 
+def test_delete_applies_when_offset_is_newer_even_if_timestamp_is_old():
+    current = OrderState(
+        order_id=6,
+        user_id=2003,
+        status="created",
+        amount=99.99,
+        source_updated_at=_dt("2026-03-21T09:00:51Z"),
+        is_deleted=0,
+        source_offset=5,
+    )
+    event = _event(
+        event_id="delete-with-old-ts",
+        op_type="d",
+        source_offset=8,
+        source_updated_at="1970-01-01T00:00:00Z",
+        before={"order_id": 6},
+    )
+    next_state, applied, reason = apply_cdc_event(current, event, seen_event_ids=set())
+    assert applied is True
+    assert reason == "delete"
+    assert next_state is not None
+    assert next_state.is_deleted == 1
+    assert next_state.source_offset == 8
+
+
+def test_snapshot_event_can_be_ignored_by_policy():
+    event = _event(
+        event_id="snapshot-1",
+        op_type="r",
+        source_offset=1,
+        source_updated_at="2026-03-21T08:00:00Z",
+        after={
+            "order_id": 9,
+            "user_id": 909,
+            "status": "created",
+            "amount": "12.34",
+            "updated_at": "2026-03-21T08:00:00Z",
+        },
+    )
+    next_state, applied, reason = apply_cdc_event(
+        None,
+        event,
+        seen_event_ids=set(),
+        snapshot_policy="ignore",
+    )
+    assert applied is False
+    assert reason == "snapshot_ignored"
+    assert next_state is None
+
+
 def test_mart_aggregation():
     states = [
         OrderState(1, 11, "paid", 10.0, _dt("2026-03-20T10:10:00Z"), 0, 1),

@@ -4,8 +4,9 @@ import json
 import os
 import signal
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 try:
     from cdc.src.dedup import DedupTracker, build_dedup_key, build_event_id
@@ -21,6 +22,31 @@ class GracefulExit:
 
     def handler(self, *_args: Any) -> None:
         self.stop = True
+
+
+class ConsumeLoopMetrics:
+    def __init__(self) -> None:
+        self.consumed_count = 0
+        self.inserted_raw_count = 0
+        self.duplicate_count = 0
+        self.parse_error_count = 0
+        self.offset_flush_count = 0
+        self._last_log_ts = time.time()
+
+    def maybe_log(self, every_seconds: int = 30) -> None:
+        now = time.time()
+        if now - self._last_log_ts < every_seconds:
+            return
+        print(
+            "[cdc-consumer-metrics] "
+            f"consumed={self.consumed_count} "
+            f"inserted_raw={self.inserted_raw_count} "
+            f"duplicate={self.duplicate_count} "
+            f"parse_error={self.parse_error_count} "
+            f"offset_flush={self.offset_flush_count}",
+            flush=True,
+        )
+        self._last_log_ts = now
 
 
 def _json_loads(raw: Optional[bytes]) -> Dict[str, Any]:
@@ -46,11 +72,23 @@ def _resolve_source_pk(envelope: DebeziumEnvelope, key_obj: Dict[str, Any]) -> s
 
 
 def _resolve_source_updated_at(envelope: DebeziumEnvelope) -> datetime:
+    # Debezium deletes can carry synthetic "1970-01-01" values in before/after;
+    # prefer connector/source timestamps, and then pick the latest plausible value.
+    candidates: List[datetime] = []
     for candidate in (envelope.after, envelope.before):
         if isinstance(candidate, dict) and candidate.get("updated_at"):
-            return parse_datetime(candidate["updated_at"])
-    ts_ms = envelope.ts_ms or envelope.source.ts_ms or int(time.time() * 1000)
-    return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+            try:
+                parsed = parse_datetime(candidate["updated_at"])
+                if parsed.year >= 2000:
+                    candidates.append(parsed)
+            except Exception:
+                pass
+    for ts in (envelope.ts_ms, envelope.source.ts_ms):
+        if ts:
+            candidates.append(datetime.fromtimestamp(int(ts) / 1000, tz=timezone.utc))
+    if candidates:
+        return max(candidates)
+    return datetime.now(tz=timezone.utc)
 
 
 def debezium_msg_to_raw_event(msg: Any, dedup: DedupTracker) -> Optional[CdcRawEvent]:
@@ -109,8 +147,8 @@ def _build_clickhouse_client() -> Any:
     return clickhouse_connect.get_client(
         host=os.getenv("CDC_CLICKHOUSE_HOST", "localhost"),
         port=int(os.getenv("CDC_CLICKHOUSE_PORT", "8124")),
-        username=os.getenv("CDC_CLICKHOUSE_USER", "default"),
-        password=os.getenv("CDC_CLICKHOUSE_PASSWORD", ""),
+        username=os.getenv("CDC_CLICKHOUSE_USER", "cdc"),
+        password=os.getenv("CDC_CLICKHOUSE_PASSWORD", "cdc123"),
         database=os.getenv("CDC_CLICKHOUSE_DB", "coinstream_cdc"),
     )
 
@@ -172,6 +210,33 @@ def insert_raw_events(ch: Any, rows: List[CdcRawEvent]) -> None:
     ch.insert("cdc_raw_events", values, column_names=columns)
 
 
+def _escape_sql_literal(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def apply_persistent_dedup(ch: Any, rows: List[CdcRawEvent]) -> Tuple[List[CdcRawEvent], int]:
+    if not rows:
+        return rows, 0
+
+    event_ids = sorted({row.event_id for row in rows if row.event_id})
+    if not event_ids:
+        return rows, 0
+
+    in_clause = ",".join(f"'{_escape_sql_literal(event_id)}'" for event_id in event_ids)
+    result = ch.query(f"SELECT event_id FROM cdc_raw_events WHERE event_id IN ({in_clause})")
+    existing_ids: Set[str] = {str(row[0]) for row in result.result_rows}
+
+    persisted_duplicate_count = 0
+    output: List[CdcRawEvent] = []
+    for row in rows:
+        if row.event_id in existing_ids and row.is_duplicate == 0:
+            output.append(replace(row, is_duplicate=1))
+            persisted_duplicate_count += 1
+        else:
+            output.append(row)
+    return output, persisted_duplicate_count
+
+
 def upsert_offsets(
     ch: Any,
     *,
@@ -207,6 +272,8 @@ def consume_loop() -> None:
     consumer = _build_consumer()
     consumer.subscribe([topic])
 
+    metrics = ConsumeLoopMetrics()
+    log_interval = int(os.getenv("CDC_METRICS_LOG_INTERVAL_SEC", "30"))
     dedup = DedupTracker(ttl_seconds=int(os.getenv("CDC_DEDUP_TTL_SECONDS", "900")))
     raw_rows: List[CdcRawEvent] = []
     offsets: List[Tuple[str, int, int]] = []
@@ -218,34 +285,53 @@ def consume_loop() -> None:
         msg = consumer.poll(1.0)
         if msg is None:
             if raw_rows:
+                raw_rows, persisted_dups = apply_persistent_dedup(ch, raw_rows)
+                metrics.duplicate_count += persisted_dups
                 insert_raw_events(ch, raw_rows)
+                metrics.inserted_raw_count += len(raw_rows)
                 upsert_offsets(ch, consumer_name=consumer_name, offset_rows=offsets)
+                metrics.offset_flush_count += 1
                 consumer.commit(asynchronous=False)
                 raw_rows.clear()
                 offsets.clear()
+            metrics.maybe_log(log_interval)
             continue
         if msg.error():
             continue
 
         event = debezium_msg_to_raw_event(msg, dedup)
         if event is None:
+            metrics.parse_error_count += 1
             continue
+        metrics.consumed_count += 1
+        if event.is_duplicate == 1:
+            metrics.duplicate_count += 1
 
         raw_rows.append(event)
         offsets.append((msg.topic(), int(msg.partition()), int(msg.offset())))
 
         if len(raw_rows) >= batch_size:
+            raw_rows, persisted_dups = apply_persistent_dedup(ch, raw_rows)
+            metrics.duplicate_count += persisted_dups
             insert_raw_events(ch, raw_rows)
+            metrics.inserted_raw_count += len(raw_rows)
             upsert_offsets(ch, consumer_name=consumer_name, offset_rows=offsets)
+            metrics.offset_flush_count += 1
             consumer.commit(asynchronous=False)
             raw_rows.clear()
             offsets.clear()
+        metrics.maybe_log(log_interval)
 
     if raw_rows:
+        raw_rows, persisted_dups = apply_persistent_dedup(ch, raw_rows)
+        metrics.duplicate_count += persisted_dups
         insert_raw_events(ch, raw_rows)
+        metrics.inserted_raw_count += len(raw_rows)
         upsert_offsets(ch, consumer_name=consumer_name, offset_rows=offsets)
+        metrics.offset_flush_count += 1
         consumer.commit(asynchronous=False)
 
+    metrics.maybe_log(log_interval)
     consumer.close()
 
 

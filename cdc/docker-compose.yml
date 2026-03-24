@@ -81,6 +81,10 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
     container_name: cdc-clickhouse
+    environment:
+      CLICKHOUSE_DB: ${CDC_CLICKHOUSE_DB:-coinstream_cdc}
+      CLICKHOUSE_USER: ${CDC_CLICKHOUSE_USER:-cdc}
+      CLICKHOUSE_PASSWORD: ${CDC_CLICKHOUSE_PASSWORD:-cdc123}
     ports:
       - "8124:8123"
       - "9009:9000"

@@ -7,3 +7,9 @@
 | duplicate 급증 | duplicate rate 쿼리, raw event_id 빈도 | connector retry 폭증, 재시작 반복, event_id 규칙 불안정 | retry/backoff 점검, event_id/dedup_key 규칙 보정, 중복 이벤트 샘플 추적 | 불필요(상태 반영 시 중복 무시) |
 | delete 반영 누락 | `order_current_state`의 `is_deleted`, raw `op_type='d'` | delete 이벤트 파싱 실패, source_pk 추출 실패, old-event 필터 오적용 | delete 파싱/키 추출 로직 점검, 누락 구간 재적용 | 필요(누락 구간 재적용 권장) |
 | mart 갱신 지연 | `mart_order_metrics_hourly.load_ts`, refresh 실행 로그 | state apply는 정상이나 mart refresh 실패, 스케줄 지연 | mart refresh 함수 수동 실행, refresh 주기/오류 로그 점검 | 필요(해당 시간대 mart 재계산) |
+| snapshot 이벤트 정책 불일치 | raw `op_type='r'`, apply 로그 `snapshot_ignored` | 초기 스냅샷 이벤트를 ignore로 설정했거나 정책 오해 | `CDC_SNAPSHOT_POLICY=upsert|ignore` 확인 후 목적에 맞게 재시작 | 정책 변경 시 필요 |
+
+## 실행 환경 변수 기준
+- ClickHouse: `CDC_CLICKHOUSE_HOST`, `CDC_CLICKHOUSE_PORT`, `CDC_CLICKHOUSE_DB`, `CDC_CLICKHOUSE_USER`, `CDC_CLICKHOUSE_PASSWORD`
+- Snapshot 정책: `CDC_SNAPSHOT_POLICY` (`upsert` 또는 `ignore`)
+- 공통 예시는 `cdc/.env.example` 참고

@@ -39,3 +39,11 @@
 - 이상 판단 기준: 전일 동시간대 대비 ±50% 이상
 - 확인 위치: `cdc/queries/cdc_monitoring.sql`의 mart hourly trend 쿼리
 - 대응 방법: state 반영 누락 여부 확인, delete 반영 여부 점검, refresh job 재실행
+
+## apply skip/error counters
+- 정의: state apply 단계에서 이벤트가 왜 반영되지 않았는지 분류한 내부 카운터
+- 계산 기준: `duplicate / old_event / missing_after / snapshot_ignored / apply_error` 누적
+- 정상 범위: duplicate/old_event는 소량 허용, apply_error는 0 유지
+- 이상 판단 기준: apply_error > 0, old_event/duplicate 급증
+- 확인 위치: `apply_cdc_to_state.py` 실행 로그 `[cdc-apply-metrics]`
+- 대응 방법: source_updated_at/source_offset 정합성 확인, snapshot 정책(`CDC_SNAPSHOT_POLICY`) 점검
